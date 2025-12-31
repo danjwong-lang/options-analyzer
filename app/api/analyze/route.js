@@ -71,12 +71,11 @@ export async function POST(request) {
                 actualOtmPercent = ((strike - currentPrice) / currentPrice) * 100;
               }
 
-              // Only include options that are actually OTM and within tolerance
+              // Only include options that are OTM and up to the max threshold
               if (actualOtmPercent < 0) continue; // Skip ITM options
               
-              const targetOtm = parseFloat(otmPercent);
-              const otmDiff = Math.abs(actualOtmPercent - targetOtm);
-              if (otmDiff > 5) continue; // Only include options within 5% of target OTM
+              const maxOtm = parseFloat(otmPercent);
+              if (actualOtmPercent > maxOtm) continue; // Skip options beyond max OTM
 
               // Calculate premium (mid-point of bid/ask, or last price)
               const bid = option.bid || 0;
@@ -98,7 +97,7 @@ export async function POST(request) {
               // Calculate normalized 30-day return
               let return30d;
               if (optionType.toLowerCase() === 'put') {
-                // Put: Return = Premium / (Strike - Premium) × (30 / Days) × 100
+                // Put: Return = Premium / (Strike - Premium) x (30 / Days) x 100
                 const effectiveCapital = strike - premium;
                 if (effectiveCapital > 0) {
                   return30d = (premium / effectiveCapital) * (30 / daysToExpiry) * 100;
@@ -106,7 +105,7 @@ export async function POST(request) {
                   continue;
                 }
               } else {
-                // Call: Return = Premium / Stock Price × (30 / Days) × 100
+                // Call: Return = Premium / Stock Price x (30 / Days) x 100
                 return30d = (premium / currentPrice) * (30 / daysToExpiry) * 100;
               }
 
