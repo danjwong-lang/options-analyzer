@@ -144,13 +144,12 @@ export default function Home() {
   const exportToCSV = () => {
     if (results.length === 0) return;
 
-    const headers = ['Ticker', 'Type', 'Expiry', 'Days', 'Stock Price', 'Strike', '% OTM', 'Bid', 'Ask', 'Premium', '30D Return %', 'IV %', 'Volume', 'Open Interest'];
+    const headers = ['Ticker', 'Type', 'Expiry', 'Days', 'Strike', '% OTM', 'Bid', 'Ask', 'Premium', '30D Return %', 'IV %', 'Volume', 'Open Interest'];
     const rows = results.map(r => [
       r.ticker,
       r.type,
       r.expiry,
       r.days_to_expiry,
-      r.stock_price?.toFixed(2),
       r.strike?.toFixed(2),
       r.otm_percent?.toFixed(2),
       r.bid?.toFixed(2),
@@ -175,14 +174,14 @@ export default function Home() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>📊 Options Premium Analyzer</h1>
+        <h1>Options Premium Analyzer</h1>
         <p>Calculate normalized 30-day returns for selling options premium</p>
       </header>
 
       <main className={styles.main}>
         <section className={styles.configuration}>
           <h2>Configuration</h2>
-          <p className={styles.subtitle}>Add up to 10 tickers • Data from Yahoo Finance</p>
+          <p className={styles.subtitle}>Add up to 10 tickers - Data from Yahoo Finance</p>
 
           <div className={styles.globalSettings}>
             <div className={styles.formGroup}>
@@ -241,11 +240,11 @@ export default function Home() {
                     {ticker.validating && <span className={styles.validating}>Validating...</span>}
                     {ticker.price && (
                       <span className={styles.valid}>
-                        ✓ ${ticker.price.toFixed(2)} {ticker.name && `• ${ticker.name}`}
+                        ${ticker.price.toFixed(2)} {ticker.name && `- ${ticker.name}`}
                       </span>
                     )}
                     {ticker.error && (
-                      <span className={styles.invalid}>✗ {ticker.error}</span>
+                      <span className={styles.invalid}>{ticker.error}</span>
                     )}
                   </div>
                 </div>
@@ -262,7 +261,7 @@ export default function Home() {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label>Target % OTM</label>
+                  <label>Max % OTM</label>
                   <input
                     type="number"
                     value={ticker.otmPercent}
@@ -271,7 +270,7 @@ export default function Home() {
                     max="50"
                     step="1"
                   />
-                  <small>±5% tolerance</small>
+                  <small>0% to this value</small>
                 </div>
               </div>
             </div>
@@ -286,7 +285,7 @@ export default function Home() {
               onClick={analyzeOptions}
               disabled={loading}
             >
-              {loading ? 'Analyzing...' : '📈 Analyze Options'}
+              {loading ? 'Analyzing...' : 'Analyze Options'}
             </button>
           </div>
         </section>
@@ -303,14 +302,14 @@ export default function Home() {
             <div className={styles.resultsHeader}>
               <h2>Results ({results.length} options)</h2>
               <button className={styles.btnExport} onClick={exportToCSV}>
-                📥 Export CSV
+                Export CSV
               </button>
             </div>
 
             <div className={styles.formulaNote}>
               <strong>30D Return Formula:</strong> 
-              <span className={styles.formula}>Puts: Premium ÷ (Strike − Premium) × (30 ÷ Days) × 100</span>
-              <span className={styles.formula}>Calls: Premium ÷ Stock Price × (30 ÷ Days) × 100</span>
+              <span className={styles.formula}>Puts: Premium / (Strike - Premium) x (30 / Days) x 100</span>
+              <span className={styles.formula}>Calls: Premium / Stock Price x (30 / Days) x 100</span>
             </div>
 
             <div className={styles.tableContainer}>
@@ -321,7 +320,6 @@ export default function Home() {
                     <th onClick={() => sortResults('type')}>Type{getSortIndicator('type')}</th>
                     <th onClick={() => sortResults('expiry')}>Expiry{getSortIndicator('expiry')}</th>
                     <th onClick={() => sortResults('days_to_expiry')}>Days{getSortIndicator('days_to_expiry')}</th>
-                    <th onClick={() => sortResults('stock_price')}>Stock{getSortIndicator('stock_price')}</th>
                     <th onClick={() => sortResults('strike')}>Strike{getSortIndicator('strike')}</th>
                     <th onClick={() => sortResults('otm_percent')}>% OTM{getSortIndicator('otm_percent')}</th>
                     <th onClick={() => sortResults('premium')}>Premium{getSortIndicator('premium')}</th>
@@ -340,7 +338,6 @@ export default function Home() {
                       </td>
                       <td>{result.expiry}</td>
                       <td>{result.days_to_expiry}</td>
-                      <td>${result.stock_price?.toFixed(2)}</td>
                       <td>${result.strike?.toFixed(2)}</td>
                       <td>{result.otm_percent?.toFixed(1)}%</td>
                       <td>${result.premium?.toFixed(2)}</td>
@@ -366,7 +363,7 @@ export default function Home() {
       </main>
 
       <footer className={styles.footer}>
-        <p>Data provided by Yahoo Finance • For educational purposes only</p>
+        <p>Data provided by Yahoo Finance - For educational purposes only</p>
       </footer>
     </div>
   );
