@@ -1,6 +1,4 @@
-import YahooFinance from 'yahoo-finance2';
-
-const yahooFinance = new YahooFinance();
+import yahooFinance from 'yahoo-finance2';
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -11,6 +9,8 @@ export async function GET(request) {
   }
 
   try {
+    yahooFinance.suppressNotices(['yahooSurvey']);
+    
     const quote = await yahooFinance.quote(ticker.toUpperCase());
     
     if (quote && quote.regularMarketPrice) {
