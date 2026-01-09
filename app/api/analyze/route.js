@@ -1,6 +1,4 @@
-import YahooFinance from 'yahoo-finance2';
-
-const yahooFinance = new YahooFinance();
+import yahooFinance from 'yahoo-finance2';
 
 export async function POST(request) {
   const body = await request.json();
@@ -9,6 +7,8 @@ export async function POST(request) {
   if (!tickers || tickers.length === 0) {
     return Response.json({ error: 'No tickers provided' }, { status: 400 });
   }
+
+  yahooFinance.suppressNotices(['yahooSurvey']);
 
   const results = [];
 
