@@ -1,5 +1,3 @@
-import yahooFinance from 'yahoo-finance2';
-
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const ticker = searchParams.get('ticker');
@@ -9,19 +7,28 @@ export async function GET(request) {
   }
 
   try {
-    yahooFinance.suppressNotices(['yahooSurvey']);
+    const symbol = ticker.toUpperCase();
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
     
-    const quote = await yahooFinance.quote(ticker.toUpperCase());
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
     
-    if (quote && quote.regularMarketPrice) {
-      return Response.json({ 
-        valid: true, 
-        price: quote.regularMarketPrice,
-        name: quote.shortName || quote.longName || ticker.toUpperCase()
-      });
-    } else {
-      return Response.json({ valid: false, error: 'Invalid ticker' });
+    const data = await response.json();
+    
+    if (data.chart?.result?.[0]) {
+      const result = data.chart.result[0];
+      const price = result.meta?.regularMarketPrice;
+      const name = result.meta?.shortName || result.meta?.longName || symbol;
+      
+      if (price) {
+        return Response.json({ valid: true, price, name });
+      }
     }
+    
+    return Response.json({ valid: false, error: 'Invalid ticker' });
   } catch (error) {
     console.error('Validation error:', error.message);
     return Response.json({ valid: false, error: 'Invalid ticker' });
