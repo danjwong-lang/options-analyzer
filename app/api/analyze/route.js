@@ -1,5 +1,3 @@
-import yahooFinance from 'yahoo-finance2';
-
 export async function POST(request) {
   const body = await request.json();
   const { tickers, minDays = 7, maxDays = 45 } = body;
@@ -8,9 +6,10 @@ export async function POST(request) {
     return Response.json({ error: 'No tickers provided' }, { status: 400 });
   }
 
-  yahooFinance.suppressNotices(['yahooSurvey']);
-
   const results = [];
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+  };
 
   try {
     for (const tickerConfig of tickers) {
@@ -19,43 +18,56 @@ export async function POST(request) {
 
       try {
         // Get current stock price
-        const quote = await yahooFinance.quote(symbol);
-        if (!quote || !quote.regularMarketPrice) {
+        const quoteUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+        const quoteResponse = await fetch(quoteUrl, { headers });
+        const quoteData = await quoteResponse.json();
+        
+        if (!quoteData.chart?.result?.[0]?.meta?.regularMarketPrice) {
           console.log(`No quote data for ${symbol}`);
           continue;
         }
-        const currentPrice = quote.regularMarketPrice;
+        const currentPrice = quoteData.chart.result[0].meta.regularMarketPrice;
 
-        // Get options chain with all expiration dates
-        const options = await yahooFinance.options(symbol);
+        // Get options expiration dates
+        const optionsUrl = `https://query1.finance.yahoo.com/v7/finance/options/${symbol}`;
+        const optionsResponse = await fetch(optionsUrl, { headers });
+        const optionsData = await optionsResponse.json();
         
-        if (!options || !options.expirationDates || options.expirationDates.length === 0) {
+        if (!optionsData.optionChain?.result?.[0]) {
           console.log(`No options data for ${symbol}`);
           continue;
         }
+
+        const optionResult = optionsData.optionChain.result[0];
+        const expirationDates = optionResult.expirationDates || [];
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         // Filter expiration dates within the desired range
-        const validExpirations = options.expirationDates.filter(expDate => {
-          const expiry = new Date(expDate);
+        const validExpirations = expirationDates.filter(timestamp => {
+          const expiry = new Date(timestamp * 1000);
           const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
           return daysToExpiry >= minDays && daysToExpiry <= maxDays;
         });
 
         // Fetch options for each valid expiration date
-        for (const expirationDate of validExpirations) {
+        for (const expirationTimestamp of validExpirations) {
           try {
-            const chainData = await yahooFinance.options(symbol, { date: expirationDate });
+            const chainUrl = `https://query1.finance.yahoo.com/v7/finance/options/${symbol}?date=${expirationTimestamp}`;
+            const chainResponse = await fetch(chainUrl, { headers });
+            const chainData = await chainResponse.json();
             
+            const chainResult = chainData.optionChain?.result?.[0];
+            if (!chainResult?.options?.[0]) continue;
+
             const chain = optionType.toLowerCase() === 'put' 
-              ? chainData.options?.[0]?.puts 
-              : chainData.options?.[0]?.calls;
+              ? chainResult.options[0].puts 
+              : chainResult.options[0].calls;
 
             if (!chain || chain.length === 0) continue;
 
-            const expiry = new Date(expirationDate);
+            const expiry = new Date(expirationTimestamp * 1000);
             const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
 
             for (const option of chain) {
@@ -71,22 +83,20 @@ export async function POST(request) {
               }
 
               // Only include options that are OTM and up to the max threshold
-              if (actualOtmPercent < 0) continue; // Skip ITM options
+              if (actualOtmPercent < 0) continue;
               
               const maxOtm = parseFloat(otmPercent);
-              if (actualOtmPercent > maxOtm) continue; // Skip options beyond max OTM
+              if (actualOtmPercent > maxOtm) continue;
 
               // Calculate premium (mid-point of bid/ask, or last price)
               const bid = option.bid || 0;
               const ask = option.ask || 0;
               let premium = (bid + ask) / 2;
               
-              // If bid/ask not available, use last price
               if (premium <= 0 && option.lastPrice) {
                 premium = option.lastPrice;
               }
 
-              // Skip if no valid premium
               if (premium <= 0) continue;
 
               const iv = (option.impliedVolatility || 0) * 100;
@@ -96,7 +106,6 @@ export async function POST(request) {
               // Calculate normalized 30-day return
               let return30d;
               if (optionType.toLowerCase() === 'put') {
-                // Put: Return = Premium / (Strike - Premium) x (30 / Days) x 100
                 const effectiveCapital = strike - premium;
                 if (effectiveCapital > 0) {
                   return30d = (premium / effectiveCapital) * (30 / daysToExpiry) * 100;
@@ -104,11 +113,9 @@ export async function POST(request) {
                   continue;
                 }
               } else {
-                // Call: Return = Premium / Stock Price x (30 / Days) x 100
                 return30d = (premium / currentPrice) * (30 / daysToExpiry) * 100;
               }
 
-              // Format expiry date
               const expiryStr = expiry.toISOString().split('T')[0];
 
               results.push({
@@ -129,7 +136,7 @@ export async function POST(request) {
               });
             }
           } catch (chainError) {
-            console.error(`Error fetching chain for ${symbol} ${expirationDate}:`, chainError.message);
+            console.error(`Error fetching chain for ${symbol}:`, chainError.message);
           }
         }
       } catch (tickerError) {
@@ -137,15 +144,11 @@ export async function POST(request) {
       }
     }
 
-    // Sort by 30-day return descending
     results.sort((a, b) => b.return_30d - a.return_30d);
-
     return Response.json({ results });
 
   } catch (error) {
     console.error('Analysis error:', error);
-    return Response.json({ 
-      error: 'Error analyzing options. Please try again.' 
-    }, { status: 500 });
+    return Response.json({ error: 'Error analyzing options. Please try again.' }, { status: 500 });
   }
 }
