@@ -9,10 +9,7 @@ export async function POST(request) {
   const results = [];
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Origin': 'https://finance.yahoo.com',
-    'Referer': 'https://finance.yahoo.com/'
+    'Accept': '*/*',
   };
 
   try {
@@ -21,19 +18,27 @@ export async function POST(request) {
       const symbol = ticker.toUpperCase();
 
       try {
-        // Get options data (includes current price and expiration dates)
         const optionsUrl = `https://query2.finance.yahoo.com/v7/finance/options/${symbol}`;
-        const optionsResponse = await fetch(optionsUrl, { headers });
+        console.log(`Fetching: ${optionsUrl}`);
         
-        if (!optionsResponse.ok) {
-          console.log(`Options API error for ${symbol}: ${optionsResponse.status}`);
+        const optionsResponse = await fetch(optionsUrl, { headers });
+        console.log(`Response status: ${optionsResponse.status}`);
+        
+        const responseText = await optionsResponse.text();
+        console.log(`Response length: ${responseText.length}`);
+        console.log(`Response preview: ${responseText.substring(0, 500)}`);
+        
+        let optionsData;
+        try {
+          optionsData = JSON.parse(responseText);
+        } catch (e) {
+          console.log(`JSON parse error: ${e.message}`);
           continue;
         }
-        
-        const optionsData = await optionsResponse.json();
-        
+
         if (!optionsData.optionChain?.result?.[0]) {
-          console.log(`No options chain data for ${symbol}`);
+          console.log(`No optionChain.result[0] for ${symbol}`);
+          console.log(`optionChain keys: ${Object.keys(optionsData.optionChain || {})}`);
           continue;
         }
 
@@ -41,11 +46,14 @@ export async function POST(request) {
         const currentPrice = optionResult.quote?.regularMarketPrice;
         
         if (!currentPrice) {
-          console.log(`No price for ${symbol}`);
+          console.log(`No price in quote for ${symbol}`);
           continue;
         }
 
+        console.log(`Got price for ${symbol}: ${currentPrice}`);
+
         const expirationDates = optionResult.expirationDates || [];
+        console.log(`Expiration dates count: ${expirationDates.length}`);
         
         if (expirationDates.length === 0) {
           console.log(`No expiration dates for ${symbol}`);
@@ -62,10 +70,14 @@ export async function POST(request) {
           return daysToExpiry >= minDays && daysToExpiry <= maxDays;
         });
 
+        console.log(`Valid expirations: ${validExpirations.length}`);
+
         // Process the first expiration that came with the initial request
         if (optionResult.options?.[0]) {
           const firstExpiry = new Date(expirationDates[0] * 1000);
           const firstDaysToExpiry = Math.ceil((firstExpiry - today) / (1000 * 60 * 60 * 24));
+          
+          console.log(`First expiry days: ${firstDaysToExpiry}`);
           
           if (firstDaysToExpiry >= minDays && firstDaysToExpiry <= maxDays) {
             processOptions(
@@ -83,7 +95,6 @@ export async function POST(request) {
 
         // Fetch options for remaining valid expiration dates
         for (const expirationTimestamp of validExpirations) {
-          // Skip first one as we already processed it
           if (expirationTimestamp === expirationDates[0]) continue;
           
           try {
@@ -111,14 +122,15 @@ export async function POST(request) {
               results
             );
           } catch (chainError) {
-            console.error(`Error fetching chain for ${symbol}:`, chainError.message);
+            console.error(`Chain error: ${chainError.message}`);
           }
         }
       } catch (tickerError) {
-        console.error(`Error processing ${ticker}:`, tickerError.message);
+        console.error(`Ticker error for ${ticker}: ${tickerError.message}`);
       }
     }
 
+    console.log(`Total results: ${results.length}`);
     results.sort((a, b) => b.return_30d - a.return_30d);
     return Response.json({ results });
 
@@ -139,7 +151,6 @@ function processOptions(optionsData, optionType, currentPrice, otmPercent, expir
     const strike = option.strike;
     if (!strike) continue;
 
-    // Calculate actual OTM percentage
     let actualOtmPercent;
     if (optionType.toLowerCase() === 'put') {
       actualOtmPercent = ((currentPrice - strike) / currentPrice) * 100;
@@ -147,13 +158,11 @@ function processOptions(optionsData, optionType, currentPrice, otmPercent, expir
       actualOtmPercent = ((strike - currentPrice) / currentPrice) * 100;
     }
 
-    // Only include options that are OTM and up to the max threshold
     if (actualOtmPercent < 0) continue;
     
     const maxOtm = parseFloat(otmPercent);
     if (actualOtmPercent > maxOtm) continue;
 
-    // Calculate premium (mid-point of bid/ask, or last price)
     const bid = option.bid || 0;
     const ask = option.ask || 0;
     let premium = (bid + ask) / 2;
@@ -168,7 +177,6 @@ function processOptions(optionsData, optionType, currentPrice, otmPercent, expir
     const volume = option.volume || 0;
     const openInterest = option.openInterest || 0;
 
-    // Calculate normalized 30-day return
     let return30d;
     if (optionType.toLowerCase() === 'put') {
       const effectiveCapital = strike - premium;
